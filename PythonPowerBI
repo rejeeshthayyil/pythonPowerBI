@@ -1,0 +1,148 @@
+Embedding sample notebook
+The following notebook demonstartes how to embed your Power BI content in a Jupyter notebook and interact with it. To run the demo, you will need to obtain your report id and group (workspace) id from the URL of your report.
+
+from powerbiclient.authentication import DeviceCodeLoginAuthentication
+from powerbiclient import Report, models
+from io import StringIO
+from ipywidgets import interact
+import requests
+import pandas as pd
+import matplotlib
+Authenticate to Power BI
+The following authentication methods can be used to authenticate the user and get the access token:
+Device flow authentication
+
+Code snippet:
+
+from powerbiclient.authentication import DeviceCodeLoginAuthentication
+device_auth = DeviceCodeLoginAuthentication()
+Interactive authentication
+
+Code snippet:
+
+from powerbiclient.authentication import InteractiveLoginAuthentication
+interactive_auth = InteractiveLoginAuthentication()
+Note: Either use auth object created or access token acquired above while creating the report instance
+
+Run the cell below to obtain the auth object using the Device Flow Authentication method for the demo notebook
+# Auth object for demo
+auth = DeviceCodeLoginAuthentication()
+Create an instance of Power BI Report
+Below snippets are the values for optional view_mode parameter
+view_mode=models.EmbedMode.VIEW.value
+view_mode=models.EmbedMode.EDIT.value
+view_mode=models.EmbedMode.CREATE.value
+Default value for the parameter is
+
+view_mode=models.EmbedMode.VIEW.value
+Below snippets are the values for the permissions parameter for embedding the report in EDIT mode
+permissions=models.Permissions.READWRITE.value
+permissions=models.Permissions.COPY.value
+permissions=models.Permissions.ALL.value
+Render report in Create mode
+To create a new report in embed mode, the following additional parameters need to be passed
+
+dataset_id='POWER_BI_DATASET_ID'
+view_mode=models.EmbedMode.CREATE.value
+Replace the group_id and report_id parameters with your own report ID and group ID and run the cell below to create a Power BI report instance:
+group_id = "ENTER YOUR GROUP ID"
+report_id = "ENTER YOUR REPORT ID"
+report = Report(group_id=group_id, report_id=report_id, auth=auth)
+Power BI event handlers
+Set report loaded event handler
+def loaded_callback(event_details):
+    print('Report is loaded')
+
+report.on('loaded', loaded_callback)
+Set report rendered event handler
+def rendered_callback(event_details):
+    print('Report is rendered')
+
+report.on('rendered', rendered_callback)
+Load the report in the output cell
+# Render report
+report
+Change dimensions of embedded report
+# Change dimensions of embedded report
+report.set_size(600, 900)
+Export data from a visual of the embedded report
+Get the active page
+def get_active_page(self):
+    
+    # Get list of pages
+    pages = self.get_pages()
+    active_page = {}
+    for page in pages:
+        
+        # Get active page
+        if page['isActive'] == True:
+            active_page = page
+            break
+    return active_page
+Get the visual whose data is to be exported
+Make sure that the active page on the report you're embedding has a visual of type 'clustered column chart', or change to a different visual type below.
+
+active_page = get_active_page(report)
+active_page_name = active_page['name']
+
+# Get list of visuals on active page
+visuals = report.visuals_on_page(active_page_name)
+
+# Get visual whose type is 'clusteredColumnChart'
+visual = next(filter(lambda visual: visual['type'] == 'clusteredColumnChart', visuals))
+visual_name = visual['name']
+Export summarized data from a visual of the embedded report
+summarized_exported_data = report.export_visual_data(active_page_name, visual_name, rows = 20)
+
+print(summarized_exported_data)
+Export underlying data from a visual of the embedded report
+underlying_exported_data = report.export_visual_data(active_page_name, visual_name, rows = 5, export_data_type = models.ExportDataType.UNDERLYING.value)
+
+print(underlying_exported_data)
+Convert exported visual data into CSV and load into pandas dataframe
+data = StringIO(summarized_exported_data)
+
+df = pd.read_csv(data, sep=",")
+df.head()
+Visualize the data
+Adjust the plot parameters below to fit your report
+
+df.plot.pie(y="Total Units", labels=df.loc[:,'isVanArsdel'].values.tolist(), figsize=(10,15))
+Filter the report by region using iPyWidget
+Adjust the filter below to fit your report
+
+def filter_report(Region):
+    region_filter = {
+        '$schema': "http://powerbi.com/product/schema#basic",
+        'target': {
+            'table': "Geo",
+            'column': "Region"
+        },
+        'operator': "In",
+        'values': [Region]
+    }
+    report.remove_filters()
+    report.update_filters([region_filter])
+report
+interact(filter_report, Region=['Central','East', 'West']);
+Get filters applied on the report
+report.get_filters()
+Get report bookmarks
+# Get list of bookmarks
+bookmarks_list = report.get_bookmarks()
+
+# Convert the list into a dataframe
+bookmarks_dataframe = pd.DataFrame(bookmarks_list)
+
+# Rename columns
+bookmarks_dataframe.rename(columns={'name':'Name', 'displayName':'Display Name', 'state':'State'}, inplace=True)
+bookmarks_dataframe
+Apply report bookmark
+def apply_bookmark(BookmarkDisplayName):
+    
+    # Get bookmark name corresponding to the display name provided by the user
+    bookmark_name = bookmarks_dataframe[bookmarks_dataframe['Display Name'] == BookmarkDisplayName].Name.values[0]
+    report.set_bookmark(bookmark_name)
+Apply bookmark using ipywidget
+report
+interact(apply_bookmark, BookmarkDisplayName=bookmarks_dataframe['Display Name'])
